@@ -1,32 +1,32 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define BUFFER_SIZE 1024
+/*
+ * Reading the input line from stdin
+ */
 char *get_line(void) {
-    //defining and allocating the buffer
-    int buffer_size = BUFFER_SIZE;
-    char *buffer = malloc(sizeof(char) * buffer_size);
+    //defining the buffer
+    ssize_t buffer_size = 0;
+    char *line = NULL;
 
-    //defining the current char we handle
-    int curr_position = 0;
-    int curr_char;
-
-    if(!buffer) {
-        fprintf(stderr, "???");
-        exit(EXIT_FAILURE);
+    //getting the line
+    if(getline(&line, &buffer_size, stdin) == -1) {
+        if(feof(stdin)) {
+            exit(EXIT_SUCCESS); //received EOF, therefore read was successful
+        }
+        else {
+            //todo what needs to happen here?
+            fprintf(stderr, "???");
+            exit(EXIT_FAILURE);
+        }
     }
 
-    //going over the input and adding it to the buffer
-    curr_char = getchar(); //reading the first char
-    while(curr_char != EOF && curr_char != '\n') {
-        buffer[curr_position] = curr_char;
-        curr_char = getchar(); //reading the next char
-        curr_position++;
-    }
-    buffer[curr_position] = '\0'; //when we get to the end, we replace it with a null character
-    return buffer;
+    return line;
 }
 
+/*
+ * Parsing the recieved line into a list of arguments
+ */
 char **get_command_args(char *command) {
 
 }
