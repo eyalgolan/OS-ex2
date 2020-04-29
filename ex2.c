@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
+#include <unistd.h>
 
 /*
  * Reading the input line from stdin
@@ -20,19 +21,15 @@ char *get_line(int *command_status_ptr) {
     return line;
 }
 
-int token(char *begin, char *end){
-
-}
 /*
  * Parsing the received line into a list of arguments
  */
 #define BUFFER_SIZE 100
 void get_command_args(char *command, int *command_status_ptr, char *args[BUFFER_SIZE]) {
 
-    int position = 0;
-
-    char *arg;
-    char *begin;
+    int position = 0; //position in argument array
+    char *arg; //pointer to current arg
+    char *begin; //arg's starting position in the command
 
     for(;;) {
         //skipping spaces
@@ -44,12 +41,14 @@ void get_command_args(char *command, int *command_status_ptr, char *args[BUFFER_
         if(*command == '\0') {
             break;
         }
+
         if(isalnum(*command) || *command == '-') {
             begin = command;
             //todo change to everthing that is not space or /0
             while(isalnum(*command) || *command == '-') {
                 *command++;
             }
+
             arg = malloc((command-begin) * sizeof(char));
             strncpy(arg, begin, command - begin);
             args[position] = arg;
@@ -81,6 +80,41 @@ void get_command_args(char *command, int *command_status_ptr, char *args[BUFFER_
         }
     }
 }
+
+void execute_background(char *args[BUFFER_SIZE]) {
+
+}
+
+void execute_foreground(char *args[BUFFER_SIZE]) {
+
+}
+
+int get_last_parameter_position(char *args[BUFFER_SIZE]) {
+    int last_arg_position = -1;
+    for(int i=0 ; i<BUFFER_SIZE - 1; i++) {
+        if(args[i + 1] == NULL){
+            last_arg_position = i;
+            break;
+        }
+    }
+    if(last_arg_position == -1) {
+        last_arg_position = BUFFER_SIZE - 1;
+    }
+    return last_arg_position;
+}
+void command_execute(char *args[BUFFER_SIZE]) {
+    int last_arg_position = get_last_parameter_position(args);
+    execvp(args[0],args);
+
+    //if command needs to run in the background
+    if(args[last_arg_position] == "&") {
+        execute_background(args);
+    }
+    //otherwise command needs to run in the foreground
+    else {
+        execute_foreground(args);
+    }
+}
 void command_loop(void) {
     char *line;
     int command_status = 1;
@@ -110,12 +144,20 @@ void command_loop(void) {
             continue;
         }
         for(int i=0 ; i<BUFFER_SIZE ; i++) {
-                printf("%c\n", *args[i]);
+            if(args[i] == NULL){
+                break;
+            }
+            printf("%s\n", args[i]);
         }
         //executing the command
-        //status = command_execute(args);
+        command_execute(args);
+
+        //free resources
         free(line);
-        free(args);
+        for(int i=0 ; i<BUFFER_SIZE ; i++) {
+            free(args[i]);
+        }
+        //free(args);
     } while(status);
 }
 
