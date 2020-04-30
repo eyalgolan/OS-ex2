@@ -3,13 +3,20 @@
 #include <ctype.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+
+#define BUFFER_SIZE 100
+#define BACKGROUND '&'
+#define STARTER "> "
+#define ERROR_MSG "Error in system call"
 
 /*
  * Reading the input line from stdin
  */
 char *get_line(int *command_status_ptr) {
     //defining the buffer
-    ssize_t buffer_size = 0;
+    size_t buffer_size = 0;
     char *line = NULL;
 
     //getting the line
@@ -24,7 +31,6 @@ char *get_line(int *command_status_ptr) {
 /*
  * Parsing the received line into a list of arguments
  */
-#define BUFFER_SIZE 100
 void get_command_args(char *command, int *command_status_ptr, char *args[BUFFER_SIZE]) {
 
     int position = 0; //position in argument array
@@ -41,7 +47,14 @@ void get_command_args(char *command, int *command_status_ptr, char *args[BUFFER_
         if(*command == '\0') {
             break;
         }
-
+        if(*command == BACKGROUND) {
+            arg = malloc(sizeof(char));
+            strncpy(arg, command, 1);
+            args[position] = arg;
+            position++;
+            *command++;
+            arg = NULL;
+        }
         if(isalnum(*command) || *command == '-') {
             begin = command;
             //todo change to everthing that is not space or /0
@@ -81,17 +94,58 @@ void get_command_args(char *command, int *command_status_ptr, char *args[BUFFER_
     }
 }
 
-void execute_background(char *args[BUFFER_SIZE]) {
-
+/*
+ *
+ */
+void remove_last_arg(char *args[BUFFER_SIZE], int last_position) {
+    args[last_position] = NULL;
 }
 
+/*
+ *
+ */
+void execute_background(char *args[BUFFER_SIZE], int last_arg_position) {
+    pid_t pid;
+    int stat;
+    int ret_code = 0;
+    remove_last_arg(args, last_arg_position);
+    if((pid = fork()) == 0) {
+        ret_code = execvp(args[0],args);
+        if(ret_code == -1) {
+            fprintf(stderr, ERROR_MSG);
+        }
+    }
+    else {
+        //wait(&stat);
+    }
+}
+
+/*
+ *
+ */
 void execute_foreground(char *args[BUFFER_SIZE]) {
+    pid_t pid;
+    int stat;
+    int ret_code = 0;
+    if((pid = fork()) == 0) {
+        ret_code = execvp(args[0],args);
+        pid_t real_pid = getpid();
 
+        if(ret_code == -1) {
+            fprintf(stderr, ERROR_MSG);
+        }
+    }
+    else {
+        wait(&stat);
+    }
 }
 
+/*
+ *
+ */
 int get_last_parameter_position(char *args[BUFFER_SIZE]) {
     int last_arg_position = -1;
-    for(int i=0 ; i<BUFFER_SIZE - 1; i++) {
+    for(int i=0 ; i < BUFFER_SIZE - 1; i++) {
         if(args[i + 1] == NULL){
             last_arg_position = i;
             break;
@@ -102,27 +156,42 @@ int get_last_parameter_position(char *args[BUFFER_SIZE]) {
     }
     return last_arg_position;
 }
-void command_execute(char *args[BUFFER_SIZE]) {
+
+/*
+ *
+ */
+void command_execute(char **args) {
     int last_arg_position = get_last_parameter_position(args);
-    execvp(args[0],args);
 
     //if command needs to run in the background
-    if(args[last_arg_position] == "&") {
-        execute_background(args);
+    if(*args[last_arg_position] == BACKGROUND) {
+        execute_background(args, last_arg_position);
     }
     //otherwise command needs to run in the foreground
     else {
         execute_foreground(args);
     }
 }
+
+/*
+ *
+ */
+void init_buffer(char *args[BUFFER_SIZE]) {
+    for(int i=0 ; i<BUFFER_SIZE ; i++) {
+        args[i] = NULL;
+    }
+}
+
+/*
+ *
+ */
 void command_loop(void) {
     char *line;
     int command_status = 1;
     int *command_status_ptr = &command_status;
-    int status;
-
+    int status = 1;
     do {
-        printf("> ");
+        printf(STARTER);
 
         //reading the command
         line = get_line(command_status_ptr);
@@ -130,37 +199,37 @@ void command_loop(void) {
             fprintf(stderr, "???");
             continue;
         }
-        printf("%s\n", line);
+//        printf("%s\n", line);
 
-        int buffer_size = BUFFER_SIZE;
-        char *args[buffer_size];
-        for(int i=0 ; i<buffer_size ; i++) {
-            args[i] = NULL;
-        }
+        char *args[BUFFER_SIZE];
+        init_buffer(args);
 
         get_command_args(line, command_status_ptr, args);
         if (*command_status_ptr == 0) {
             fprintf(stderr, "???");
             continue;
         }
-        for(int i=0 ; i<BUFFER_SIZE ; i++) {
-            if(args[i] == NULL){
-                break;
-            }
-            printf("%s\n", args[i]);
-        }
+//        for(int i=0 ; i < BUFFER_SIZE ; i++) {
+//            if(args[i] == NULL){
+//                break;
+//            }
+//            printf("%s\n", args[i]);
+//        }
         //executing the command
         command_execute(args);
 
         //free resources
         free(line);
-        for(int i=0 ; i<BUFFER_SIZE ; i++) {
+        for(int i=0 ; i < BUFFER_SIZE ; i++) {
             free(args[i]);
         }
         //free(args);
     } while(status);
 }
 
+/*
+ *
+ */
 int main() {
 
     //running the command loop
