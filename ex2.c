@@ -10,6 +10,7 @@
 #define BACKGROUND '&'
 #define STARTER "> "
 #define ERROR_MSG "Error in system call"
+#define HISTORY_COMMAND "history"
 
 /*
  * Reading the input line from stdin
@@ -107,18 +108,18 @@ void remove_last_arg(char *args[BUFFER_SIZE], int last_position) {
 /*
  *
  */
-void execute_background(char *args[BUFFER_SIZE], int last_arg_position) {
+void execute_background(char **args, int last_arg_position) {
     pid_t pid;
     int stat;
     int ret_code = 0;
     remove_last_arg(args, last_arg_position);
     if((pid = fork()) == 0) {
-        for(int i=0 ; i < BUFFER_SIZE ; i++) {
-            if(args[i] == NULL){
-                break;
-            }
-            printf("%s\n", args[i]);
-        }
+//        for(int i=0 ; i < BUFFER_SIZE ; i++) {
+//            if(args[i] == NULL){
+//                break;
+//            }
+//            printf("%s\n", args[i]);
+//        }
         ret_code = execvp(args[0],args);
         if(ret_code == -1) {
             fprintf(stderr, ERROR_MSG);
@@ -133,17 +134,17 @@ void execute_background(char *args[BUFFER_SIZE], int last_arg_position) {
 /*
  *
  */
-void execute_foreground(char *args[BUFFER_SIZE]) {
+void execute_foreground(char **args) {
     pid_t pid;
     int stat;
     int ret_code = 0;
     if((pid = fork()) == 0) {
-        for(int i=0 ; i < BUFFER_SIZE ; i++) {
-            if(args[i] == NULL){
-                break;
-            }
-            printf("%s\n", args[i]);
-        }
+//        for(int i=0 ; i < BUFFER_SIZE ; i++) {
+//            if(args[i] == NULL){
+//                break;
+//            }
+//            printf("%s\n", args[i]);
+//        }
         ret_code = execvp(args[0],args);
         pid_t real_pid = getpid();
 
@@ -173,28 +174,35 @@ int get_last_parameter_position(char *args[BUFFER_SIZE]) {
     return last_arg_position;
 }
 
+void execute_history(char **history) {
+
+}
 /*
  *
  */
-void command_execute(char **args) {
+char **command_execute(char **args, char **history) {
     int last_arg_position = get_last_parameter_position(args);
+
+    if(args[0] == HISTORY_COMMAND) {
+        execute_history(history);
+    }
 
     //if command needs to run in the background
     if(*args[last_arg_position] == BACKGROUND) {
         execute_background(args, last_arg_position);
-        printf("in background");
+        //printf("in background");
     }
     //otherwise command needs to run in the foreground
     else {
         execute_foreground(args);
-        printf("in foreground");
+        //printf("in foreground");
     }
 }
 
 /*
  *
  */
-void init_buffer(char *args[BUFFER_SIZE]) {
+void init_array(char **args) {
     for(int i=0 ; i<BUFFER_SIZE ; i++) {
         args[i] = NULL;
     }
@@ -207,6 +215,10 @@ void free_buffer(char *line, char *args[BUFFER_SIZE]) {
     }
     free(args);
 }
+
+void add_to_history(char *pid_status, char *line, char **history) {
+
+}
 /*
  *
  */
@@ -214,6 +226,9 @@ void command_loop(void) {
     char *line;
     int command_status = 1;
     int *command_status_ptr = &command_status;
+    char **history =  malloc(BUFFER_SIZE * sizeof(char*));
+    init_array(history);
+
     int status = 1;
     do {
         printf(STARTER);
@@ -227,7 +242,7 @@ void command_loop(void) {
 //        printf("%s\n", line);
 
         char **args = malloc(BUFFER_SIZE * sizeof(char*));
-        init_buffer(args);
+        init_array(args);
 
         get_command_args(line, command_status_ptr, args);
         if (*command_status_ptr == 0) {
@@ -241,8 +256,8 @@ void command_loop(void) {
 //            printf("%s\n", args[i]);
 //        }
         //executing the command
-        command_execute(args);
-
+        char **pid_status = command_execute(args, history);
+        add_to_history(pid_status, line, history);
         //free resources
         //free_buffer(line, args);
 
