@@ -48,8 +48,9 @@ void get_command_args(char *command, int *command_status_ptr, char *args[BUFFER_
             break;
         }
         if(*command == BACKGROUND) {
-            arg = malloc(sizeof(char));
+            arg = malloc(sizeof(char) + 1);
             strncpy(arg, command, 1);
+            arg[strlen(arg)] = '\0';
             args[position] = arg;
             position++;
             *command++;
@@ -62,8 +63,9 @@ void get_command_args(char *command, int *command_status_ptr, char *args[BUFFER_
                 *command++;
             }
 
-            arg = malloc((command-begin) * sizeof(char));
+            arg = malloc((command-begin + 1) * sizeof(char));
             strncpy(arg, begin, command - begin);
+            arg[strlen(arg)] = '\0';
             args[position] = arg;
             position++;
             arg = NULL;
@@ -85,8 +87,9 @@ void get_command_args(char *command, int *command_status_ptr, char *args[BUFFER_
             if (*command_status_ptr == 0) {
                 break;
             }
-            arg = malloc((command-begin) * sizeof(char));
+            arg = malloc((command-begin + 1) * sizeof(char));
             strncpy(arg, begin, command - begin);
+            arg[strlen(arg)] = '\0';
             args[position] = arg;
             position++;
             arg = NULL;
@@ -110,10 +113,17 @@ void execute_background(char *args[BUFFER_SIZE], int last_arg_position) {
     int ret_code = 0;
     remove_last_arg(args, last_arg_position);
     if((pid = fork()) == 0) {
+        for(int i=0 ; i < BUFFER_SIZE ; i++) {
+            if(args[i] == NULL){
+                break;
+            }
+            printf("%s\n", args[i]);
+        }
         ret_code = execvp(args[0],args);
         if(ret_code == -1) {
             fprintf(stderr, ERROR_MSG);
         }
+        exit(EXIT_SUCCESS);
     }
     else {
         //wait(&stat);
@@ -128,6 +138,12 @@ void execute_foreground(char *args[BUFFER_SIZE]) {
     int stat;
     int ret_code = 0;
     if((pid = fork()) == 0) {
+        for(int i=0 ; i < BUFFER_SIZE ; i++) {
+            if(args[i] == NULL){
+                break;
+            }
+            printf("%s\n", args[i]);
+        }
         ret_code = execvp(args[0],args);
         pid_t real_pid = getpid();
 
@@ -166,10 +182,12 @@ void command_execute(char **args) {
     //if command needs to run in the background
     if(*args[last_arg_position] == BACKGROUND) {
         execute_background(args, last_arg_position);
+        printf("in background");
     }
     //otherwise command needs to run in the foreground
     else {
         execute_foreground(args);
+        printf("in foreground");
     }
 }
 
@@ -182,6 +200,13 @@ void init_buffer(char *args[BUFFER_SIZE]) {
     }
 }
 
+void free_buffer(char *line, char *args[BUFFER_SIZE]) {
+    free(line);
+    for(int i=0 ; i < BUFFER_SIZE ; i++) {
+        free(args[i]);
+    }
+    free(args);
+}
 /*
  *
  */
@@ -201,7 +226,7 @@ void command_loop(void) {
         }
 //        printf("%s\n", line);
 
-        char *args[BUFFER_SIZE];
+        char **args = malloc(BUFFER_SIZE * sizeof(char*));
         init_buffer(args);
 
         get_command_args(line, command_status_ptr, args);
@@ -219,11 +244,8 @@ void command_loop(void) {
         command_execute(args);
 
         //free resources
-        free(line);
-        for(int i=0 ; i < BUFFER_SIZE ; i++) {
-            free(args[i]);
-        }
-        //free(args);
+        //free_buffer(line, args);
+
     } while(status);
 }
 
@@ -231,7 +253,6 @@ void command_loop(void) {
  *
  */
 int main() {
-
     //running the command loop
     command_loop();
 
