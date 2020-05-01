@@ -8,10 +8,13 @@
 
 #define MAX_BUFFER_SIZE 100
 #define MAX_COMMAND_NUM 100
+#define ERROR_CODE -999
 #define BACKGROUND '&'
 #define STARTER "> "
 #define ERROR_MSG "Error in system call"
 #define HISTORY_COMMAND "history"
+#define RUNNING_STATUS "RUNNING"
+#define DONE_STATUS "DONE"
 
 /*
  * Reading the input line from stdin
@@ -131,8 +134,10 @@ pid_t execute_background(char **args, int last_arg_position) {
         sleep(10);
         if(ret_code == -1) {
             fprintf(stderr, ERROR_MSG);
+            fflush(stderr);
+            exit(EXIT_FAILURE);
         }
-        exit(0);
+        exit(EXIT_SUCCESS);
     }
     else {
         return pid;
@@ -163,11 +168,14 @@ pid_t execute_foreground(char **args) {
 
         if(ret_code == -1) {
             fprintf(stderr, ERROR_MSG);
+            fflush(stderr);
+            exit(EXIT_FAILURE);
         }
-        exit(0);
+        exit(EXIT_SUCCESS);
     }
     else {
         wait(&stat);
+        sleep(1); //todo is this ok?
         return pid;
     }
 }
@@ -196,12 +204,12 @@ char *get_status(const char *pid) {
 
     // child is still running
     if (return_pid == 0) {
-        return "RUNNING";
+        return RUNNING_STATUS;
     }
 
     // child exited or error
     else {
-        return "DONE";
+        return DONE_STATUS;
     }
 }
 
@@ -229,7 +237,7 @@ pid_t execute_history(char ***history, char *line, int command_num) {
             log_line[1][strlen(log_line[1]) - 1] = 0;
             char *status;
             if(i == command_num) {
-                status = "RUNNING";
+                status = RUNNING_STATUS;
             }
             else {
                 status = get_status(log_line[0]);
@@ -244,7 +252,7 @@ pid_t execute_history(char ***history, char *line, int command_num) {
 //            }
             fflush(stdout);
         }
-        history[command_num - 1][2] = "DONE";
+        history[command_num - 1][2] = DONE_STATUS;
         exit(0);
     }
     else {
@@ -258,7 +266,9 @@ pid_t execute_history(char ***history, char *line, int command_num) {
  */
 pid_t command_execute(char **args, char ***history, char *line, int command_num) {
     int last_arg_position = get_last_parameter_position(args);
-
+    if(args[0] == NULL) {
+        return ERROR_CODE;
+    }
     if(strcmp(args[0], HISTORY_COMMAND) == 0) {
         return execute_history(history, line, command_num);
     }
@@ -305,47 +315,53 @@ void free_buffer(char *line, char *args[MAX_BUFFER_SIZE]) {
  *
  */
 void command_loop(void) {
+
+    //initializing variables
     char *line;
     int command_status = 1;
     int command_num = 0;
     int *command_status_ptr = &command_status;
     char ***history =  malloc(MAX_COMMAND_NUM * sizeof(char**));
     init_history(history);
-
     int status = 1;
+
+    //command loop
     do {
         printf(STARTER);
 
         //reading the command
         line = get_line(command_status_ptr);
+
+        //checking if error occurred
         if (*command_status_ptr == 0) {
-            fprintf(stderr, "???");
+            fprintf(stderr, ERROR_MSG);
             continue;
         }
-//        printf("%s\n", line);
 
+        //initialing argument array
         char **args = malloc(MAX_BUFFER_SIZE * sizeof(char*));
         init_buffer(args);
 
+        //parsing the commands arguments into the array
         get_command_args(line, command_status_ptr, args);
+
+        //checking if error occurred
         if (*command_status_ptr == 0) {
-            fprintf(stderr, "???");
+            fprintf(stderr, ERROR_MSG);
             continue;
         }
-//        for(int i=0 ; i < MAX_BUFFER_SIZE ; i++) {
-//            if(args[i] == NULL){
-//                break;
-//            }
-//            printf("%s\n", args[i]);
-//        }
-        //executing the command
 
+        //executing the command
         pid_t pid = command_execute(args, history, line, command_num);
+        if (pid == ERROR_CODE) {
+            continue;
+        }
 
         //adding command to history (if command is "history", it will be added as part of it's own run)
         if(args[0] != HISTORY_COMMAND) {
             add_to_history(pid, line, history, command_num);
         }
+
         //free resources
         //free_buffer(line, args);
         command_num++;
