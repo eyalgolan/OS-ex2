@@ -120,6 +120,12 @@ void execute_background(char **args, int last_arg_position) {
 //            }
 //            printf("%s\n", args[i]);
 //        }
+
+        //print pid
+        pid_t real_pid = getpid();
+        printf("%d\n", real_pid);
+        fflush(stdout);
+
         ret_code = execvp(args[0],args);
         if(ret_code == -1) {
             fprintf(stderr, ERROR_MSG);
@@ -145,8 +151,13 @@ void execute_foreground(char **args) {
 //            }
 //            printf("%s\n", args[i]);
 //        }
-        ret_code = execvp(args[0],args);
+
+        //print pid
         pid_t real_pid = getpid();
+        printf("%d\n", real_pid);
+        fflush(stdout);
+
+        ret_code = execvp(args[0],args);
 
         if(ret_code == -1) {
             fprintf(stderr, ERROR_MSG);
