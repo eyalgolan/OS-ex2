@@ -10,6 +10,7 @@
 #define MAX_BUFFER_SIZE 100
 #define MAX_COMMAND_NUM 100
 #define ERROR_CODE -999
+#define EXIT_CODE -500
 #define BACKGROUND '&'
 #define STARTER "> "
 #define ERROR_MSG "Error in system call"
@@ -319,6 +320,9 @@ pid_t execute_history(char ***history, char *line, int command_num) {
     }
 }
 
+/*
+ *
+ */
 pid_t execute_cd(char **args, int last_arg_position) {
     if(last_arg_position > 1) {
         fprintf(stderr, ARGS_NUM_ERROR);
@@ -336,6 +340,7 @@ pid_t execute_cd(char **args, int last_arg_position) {
     }
     if(chdir(args[1]) != 0) {
         perror("Error");
+        return EXIT_CODE;
     }
     return getpid();
 }
@@ -350,7 +355,7 @@ pid_t command_execute(char **args, char ***history, char ***jobs, char *line, in
         return ERROR_CODE;
     }
     if(strcmp(args[0], EXIT_COMMAND) == 0) {
-        exit(EXIT_SUCCESS);
+        return EXIT_CODE;
     }
     else if(strcmp(args[0], CD_COMMAND) == 0) {
         child_pid = execute_cd(args, last_arg_position);
@@ -428,7 +433,7 @@ void command_loop(void) {
     char ***jobs =  malloc(MAX_COMMAND_NUM * sizeof(char**));
     //init_logger_buffer(history);
     //init_logger_buffer(jobs);
-    int status = 1;
+    pid_t pid = 0;
 
     //command loop
     do {
@@ -457,7 +462,7 @@ void command_loop(void) {
         }
 
         //executing the command
-        pid_t pid = command_execute(args, history, jobs, line, command_num);
+        pid = command_execute(args, history, jobs, line, command_num);
         if (pid == ERROR_CODE) {
             continue;
         }
@@ -466,7 +471,11 @@ void command_loop(void) {
         //free_buffer(line, args);
         command_num++;
         //printf("%d\n", command_num);
-    } while(status);
+    } while(pid != EXIT_CODE);
+
+    free(history);
+    free(jobs);
+    exit(EXIT_SUCCESS);
 }
 
 /*
