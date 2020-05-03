@@ -15,7 +15,6 @@
 #define STARTER "> "
 #define ERROR_MSG "Error in system call"
 #define ARGS_NUM_ERROR "Error: Too many arguments"
-#define DIRECTORY_NOT_FOUND_ERROR "ERROR: no such file or directory"
 #define EXIT_COMMAND "exit"
 #define CD_COMMAND "cd"
 #define HISTORY_COMMAND "history"
@@ -27,11 +26,11 @@
  * Reading the input line from stdin
  */
 char *get_line(int *command_status_ptr) {
-    //defining the buffer
+    // defining the buffer
     size_t buffer_size = 0;
     char *line = NULL;
 
-    //getting the line
+    // getting the line
     if(getline(&line, &buffer_size, stdin) == -1) {
         if(!feof(stdin)) {
             *command_status_ptr = 0; //didnt get to EOF, therefore read wasn't successful
@@ -41,25 +40,30 @@ char *get_line(int *command_status_ptr) {
 }
 
 /*
- * Parsing the received line into a list of arguments
+ * Parsing the received line into a list of arguments and updates the args array
  */
 void get_command_args(char *command, int *command_status_ptr, char *args[MAX_BUFFER_SIZE]) {
 
-    int position = 0; //position in argument array
-    char *arg; //pointer to current arg
-    char *begin; //arg's starting position in the command
+    int position = 0;   // position in argument array
+    char *arg;          // pointer to current arg
+    char *begin;        // args starting position in the command
 
+    // going over the command
     for(;;) {
-        //skipping spaces
+        // skipping spaces
         while (isspace(*command)) {
             *command++;
         }
 
-        //if we reached the end of the command
+        // if we reached the end of the command
         if(*command == '\0') {
             break;
         }
+
+        // if this is a background command
         if(*command == BACKGROUND) {
+
+            // allocating the arg in the args array
             arg = malloc(sizeof(char) + 1);
             strncpy(arg, command, 1);
             arg[strlen(arg)] = '\0';
@@ -68,6 +72,8 @@ void get_command_args(char *command, int *command_status_ptr, char *args[MAX_BUF
             *command++;
             arg = NULL;
         }
+
+        // reading a command argument
         if(isalnum(*command) || *command == '-' || *command == '~' || *command == '.') {
             begin = command;
             //todo change to everthing that is not space or /0
@@ -75,6 +81,7 @@ void get_command_args(char *command, int *command_status_ptr, char *args[MAX_BUF
                 *command++;
             }
 
+            // allocating the arg in the args array
             arg = malloc((command-begin + 1) * sizeof(char));
             strncpy(arg, begin, command - begin);
             arg[strlen(arg)] = '\0';
@@ -82,23 +89,28 @@ void get_command_args(char *command, int *command_status_ptr, char *args[MAX_BUF
             position++;
             arg = NULL;
         }
-        //if we have quotes in the command
+
+        // if we have quotes in the command
         if(*command =='"') {
             int quote = *command++;
             begin = command;
 
-            //going over the command until we reached the closing quote
+            // going over the command until we reached the closing quote
             while (*command && *command != '"') {
                 *command++;
-                //if we reached the end of the command, without getting a closing quote, update status to error
+                // if we reached the end of the command, without getting a closing quote, update status to error
                 if (*command == '\0') {
                     *command_status_ptr = 0;
                 }
             }
             *command++;
+
+            // checking if there is an error, if so finish reading the command
             if (*command_status_ptr == 0) {
                 break;
             }
+
+            // allocating the arg in the args array
             arg = malloc((command-begin + 1) * sizeof(char));
             strncpy(arg, begin, command - begin);
             arg[strlen(arg)] = '\0';
@@ -110,94 +122,97 @@ void get_command_args(char *command, int *command_status_ptr, char *args[MAX_BUF
 }
 
 /*
- *
+ * removes the last argument from the argument array (used to remove `&` from background commands)
  */
 void remove_last_arg(char *args[MAX_BUFFER_SIZE], int last_position) {
     args[last_position] = NULL;
 }
 
 /*
- *
+ * creates a child process in which the given command will be executed, without waiting for the command to finish
  */
 pid_t execute_background(char **args, int last_arg_position) {
     pid_t pid;
-    int stat;
     int ret_code = 0;
     remove_last_arg(args, last_arg_position);
     if((pid = fork()) == 0) {
-//        for(int i=0 ; i < MAX_BUFFER_SIZE ; i++) {
-//            if(args[i] == NULL){
-//                break;
-//            }
-//            printf("%s\n", args[i]);
-//        }
+        // child process
 
         //print pid
         pid_t real_pid = getpid();
         printf("%d\n", real_pid);
         fflush(stdout);
 
-        ret_code = execvp(args[0],args);
-        //sleep(10);
+        ret_code = execvp(args[0],args); // executes the command
+
+        // if an error was received
         if(ret_code == -1) {
+            // print an error message and exit with failure code
             fprintf(stderr, ERROR_MSG);
             fflush(stderr);
             exit(EXIT_FAILURE);
         }
-        exit(EXIT_SUCCESS);
+        exit(EXIT_SUCCESS); // otherwise exit with success code
     }
     else {
+        //parent process
+
         return pid;
     }
 }
 
 /*
- *
+ * creates a child process in which the given command will be executed, waits for the command to finish
  */
 pid_t execute_foreground(char **args) {
     pid_t pid;
     int stat;
     int ret_code = 0;
-    if((pid = fork()) == 0) {
-//        for(int i=0 ; i < MAX_BUFFER_SIZE ; i++) {
-//            if(args[i] == NULL){
-//                break;
-//            }
-//            printf("%s\n", args[i]);
-//        }
 
-        //print pid
+
+    if((pid = fork()) == 0) {
+        // child process
+
+        // print pid
         pid_t real_pid = getpid();
         printf("%d\n", real_pid);
         fflush(stdout);
 
-        ret_code = execvp(args[0],args);
+        ret_code = execvp(args[0],args); //executing the command
 
+        // if the command returned an error code
         if(ret_code == -1) {
+            // print an error message and return an failiure code
             fprintf(stderr, ERROR_MSG);
             fflush(stderr);
             exit(EXIT_FAILURE);
         }
+
+        // otherwise exit with success code
         exit(EXIT_SUCCESS);
     }
     else {
+        // parent process, wait until the child process finish
         wait(&stat);
-        //sleep(1); //todo is this ok?
         return pid;
     }
 }
 
 /*
- *
+ * finds the location of the last arg of the command and returns it
  */
 int get_last_parameter_position(char *args[MAX_BUFFER_SIZE]) {
     int last_arg_position = -1;
+
+    // going over the args array until we get null or until we reached the max buffer size
     for(int i=0 ; i < MAX_BUFFER_SIZE - 1; i++) {
         if(args[i + 1] == NULL){
             last_arg_position = i;
             break;
         }
     }
+
+    // if the args array is full
     if(last_arg_position == -1) {
         last_arg_position = MAX_BUFFER_SIZE - 1;
     }
@@ -205,50 +220,39 @@ int get_last_parameter_position(char *args[MAX_BUFFER_SIZE]) {
 }
 
 /*
- *
+ * gets the status of a command and returns it
  */
 char *get_status(const char *pid) {
     int status;
     pid_t received_pid = atoi(pid);
-    pid_t return_pid = waitpid(received_pid, &status, WNOHANG); /* WNOHANG def'd in wait.h */
+    pid_t return_pid = waitpid(received_pid, &status, WNOHANG); // get the state of the child process
 
     // child is still running
     if (return_pid == 0) {
-        //printf("running status");
-        //fflush(stdout);
         return RUNNING_STATUS;
     }
 
     // child exited or error
     else {
-        //printf("done status\n");
-        //printf("%d\n", return_pid);
-        //printf("%d\n", received_pid);
-        //fflush(stdout);
         return DONE_STATUS;
     }
 }
 
 /*
- *
+ * adds the command's pid and args to a new line in the logger
  */
 void add_to_logger(pid_t pid, char *line, char ***logger, int command_num) {
-    logger[command_num] = malloc(3*sizeof(char*));
+
+    // allocating memory of the logger line, then copying the command information to it
+    logger[command_num] = malloc(3 * sizeof(char*));
     logger[command_num][0] = malloc(sizeof(char*));
     snprintf(logger[command_num][0],sizeof(char*),"%d", pid);
     logger[command_num][1] = malloc(sizeof(char*));
     strcpy(logger[command_num][1], line);
-    int i = 0;
-    while(logger[i] != NULL && i < MAX_COMMAND_NUM) {
-        //printf("printing before adding %d %s %s %s\n", i, logger[i][0],logger[i][1], logger[i][2]);
-        i++;
-    }
-    //printf("adding to log line %d\n", command_num);
-    //logger[command_num] = log_line;
 }
 
 /*
- *
+ * executes the job command - prints the all the jobs that were started by the program
  */
 pid_t execute_jobs(char ***jobs) {
     pid_t pid;
@@ -256,74 +260,84 @@ pid_t execute_jobs(char ***jobs) {
     int real_index = 0;
 
     if ((pid = fork()) == 0) {
+        //child process
 
+        // printing the process's pid
         pid_t real_pid = getpid();
         printf("%d\n", real_pid);
 
+        // going over all the command in the job logger and printing them
         for (int i = 0 ; i < MAX_COMMAND_NUM ; i++) {
             if (jobs[i] == NULL) {
                 break;
             }
             char **log_line = jobs[i];
-            log_line[1][strlen(log_line[1]) - 1] = 0;
+            log_line[1][strlen(log_line[1]) - 1] = 0;                    // removing trailing newline
             char *status;
-            status = get_status(log_line[0]);
-            printf("%s %s %s\n", log_line[0], log_line[1], status);
+            status = get_status(log_line[0]);                          // getting the process status
+            printf("%s %s %s\n", log_line[0], log_line[1], status); // printing in the appropriate format
             fflush(stdout);
             real_index++;
         }
-        exit(EXIT_SUCCESS);
+        exit(EXIT_SUCCESS); // exits with success code
     }
     else {
+        // parent process, waiting for the child to finish
         wait(&stat);
         return pid;
     }
 }
 
 /*
- *
+ * executes the history command - prints all the commands that were executed by the program
  */
 pid_t execute_history(char ***history, char *line, int command_num) {
     pid_t pid;
     int stat;
-    int real_index = 0;
-    pid = fork();
+    pid = fork(); //creating the child process
 
     if (pid == 0) {
+        //child process
+
         pid_t real_pid = getpid();
         printf("%d\n", real_pid);
         add_to_logger(real_pid, line, history, command_num);
 
         char **log_line ;
+
+        // going over all the command in the job logger and printing them
         for (int i = 0 ; i <= command_num ; i++) {
             log_line = history[i];
-            log_line[1][strlen(log_line[1]) - 1] = 0;
+            log_line[1][strlen(log_line[1]) - 1] = 0;  // removing trailing newline
             char *status;
+            // if the command is the last history command, set its status to running status
             if (i == command_num) {
-                //printf("%d\n", real_index);
                 status = RUNNING_STATUS;
             }
+            // otherwise, get the process's status
             else {
                 status = get_status(log_line[0]);
             }
-            printf("%s %s %s\n", log_line[0], log_line[1], status);
+            printf("%s %s %s\n", log_line[0], log_line[1], status); // printing in the appropriate format
             fflush(stdout);
         }
+        // setting the last history command status to done status
         log_line = history[command_num];
         log_line[2] = DONE_STATUS;
-        //printf("%s %s %s\n", log_line[0], log_line[1], log_line[2]);
-        exit(EXIT_SUCCESS);
+        exit(EXIT_SUCCESS); // exits with success code
     }
     else {
+        // parent process, waiting for the child process to finish
         wait(&stat);
         return pid;
     }
 }
 
 /*
- *
+ * executes the cd command
  */
 pid_t execute_cd(char **args, int last_arg_position) {
+    // if the command received more the one argument, prints an error and exits
     if(last_arg_position > 1) {
         fprintf(stderr, ARGS_NUM_ERROR);
         fflush(stderr);
@@ -331,13 +345,17 @@ pid_t execute_cd(char **args, int last_arg_position) {
     }
     printf("%d\n", getpid());
 
+    // if the command received parameters
     if(last_arg_position != 0) {
+        // and the parameter is ~
         if(strcmp(args[1], "~") == 0) {
+            // change the argument to the user's home directory
             struct passwd *pw = getpwuid(getuid());
             const char *homedir = pw->pw_dir;
             args[1] = homedir;
         }
     }
+    // if the command didn't execute successfully, return an error and finish the entire program's run
     if(chdir(args[1]) != 0) {
         perror("Error");
         return EXIT_CODE;
@@ -345,28 +363,37 @@ pid_t execute_cd(char **args, int last_arg_position) {
     return getpid();
 }
 /*
- *
+ * executes the received command and adds it to the relevant logs
  */
 pid_t command_execute(char **args, char ***history, char ***jobs, char *line, int command_num) {
-    int last_arg_position = get_last_parameter_position(args);
+    int last_arg_position = get_last_parameter_position(args); // get the index of the last argument in the args array
     pid_t child_pid;
+
+    // if the user pressed enter
     if(args[0] == NULL) {
-        //printf("first argument was null");
         return ERROR_CODE;
     }
+
+    // if the user entered the exit command
     if(strcmp(args[0], EXIT_COMMAND) == 0) {
         return EXIT_CODE;
     }
+
+    // if the user entered the cd command
     else if(strcmp(args[0], CD_COMMAND) == 0) {
         child_pid = execute_cd(args, last_arg_position);
     }
+
+    // if the user entered the history command
     else if(strcmp(args[0], HISTORY_COMMAND) == 0) {
         child_pid = execute_history(history, line, command_num);
     }
+
+    // ih the user entered the jobs command
     else if(strcmp(args[0], JOBS_COMMAND) == 0) {
         child_pid = execute_jobs(jobs);
     }
-    // if command needs to run in the background
+    // if command needs to run in the background, run it and add it to the jobs logger
     else if(*args[last_arg_position] == BACKGROUND) {
         child_pid = execute_background(args, last_arg_position);
         add_to_logger(child_pid, line, jobs, command_num);
@@ -399,7 +426,7 @@ void init_logger_buffer(char ***logger) {
 }
 
 /*
- *
+ * setting all the arg pointers to null
  */
 void init_args_buffer(char **args) {
     for(int i=0 ; i < MAX_BUFFER_SIZE ; i++) {
@@ -419,7 +446,8 @@ void free_buffer(char *line, char *args[MAX_BUFFER_SIZE]) {
 }
 
 /*
- *
+ * The main command loop - This function runs command from the user, until an exit code is received  - either
+ * if the user sent the exit command, of if the cd command failed
  */
 void command_loop(void) {
 
@@ -479,7 +507,7 @@ void command_loop(void) {
 }
 
 /*
- *
+ * The main calls the command_loop function which controls most of the programs logic
  */
 int main() {
     //running the command loop
