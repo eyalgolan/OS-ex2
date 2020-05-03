@@ -12,7 +12,12 @@
 #define BACKGROUND '&'
 #define STARTER "> "
 #define ERROR_MSG "Error in system call"
+#define ARGS_NUM_ERROR "Error: Too many arguments"
+#define DIRECTORY_NOT_FOUND_ERROR "ERROR: no such file or directory"
+#define EXIT_COMMAND "exit"
+#define CD_COMMAND "cd"
 #define HISTORY_COMMAND "history"
+#define JOBS_COMMAND "jobs"
 #define RUNNING_STATUS "RUNNING"
 #define DONE_STATUS "DONE"
 
@@ -61,10 +66,10 @@ void get_command_args(char *command, int *command_status_ptr, char *args[MAX_BUF
             *command++;
             arg = NULL;
         }
-        if(isalnum(*command) || *command == '-') {
+        if(isalnum(*command) || *command == '-' || *command == '~' || *command == '.') {
             begin = command;
             //todo change to everthing that is not space or /0
-            while(isalnum(*command) || *command == '-') {
+            while(isalnum(*command) || *command == '-' || *command == '~' || *command == '.') {
                 *command++;
             }
 
@@ -131,7 +136,7 @@ pid_t execute_background(char **args, int last_arg_position) {
         fflush(stdout);
 
         ret_code = execvp(args[0],args);
-        sleep(10);
+        //sleep(10);
         if(ret_code == -1) {
             fprintf(stderr, ERROR_MSG);
             fflush(stderr);
@@ -175,7 +180,7 @@ pid_t execute_foreground(char **args) {
     }
     else {
         wait(&stat);
-        sleep(1); //todo is this ok?
+        //sleep(1); //todo is this ok?
         return pid;
     }
 }
@@ -197,6 +202,9 @@ int get_last_parameter_position(char *args[MAX_BUFFER_SIZE]) {
     return last_arg_position;
 }
 
+/*
+ *
+ */
 char *get_status(const char *pid) {
     int status;
     pid_t received_pid = atoi(pid);
@@ -204,56 +212,65 @@ char *get_status(const char *pid) {
 
     // child is still running
     if (return_pid == 0) {
+        //printf("running status");
+        //fflush(stdout);
         return RUNNING_STATUS;
     }
 
     // child exited or error
     else {
+        //printf("done status\n");
+        //printf("%d\n", return_pid);
+        //printf("%d\n", received_pid);
+        //fflush(stdout);
         return DONE_STATUS;
     }
 }
 
-void add_to_history(pid_t pid, char *line, char ***history, int command_num) {
-    char **log_line = malloc(sizeof(pid_t) + 2 * sizeof(char*));
-    log_line[0] = malloc(sizeof(char*));
-    sprintf(log_line[0],"%d", pid);
-    log_line[1] = line;
-    history[command_num] = log_line;
+/*
+ *
+ */
+void add_to_logger(pid_t pid, char *line, char ***logger, int command_num) {
+    logger[command_num] = malloc(3*sizeof(char*));
+    logger[command_num][0] = malloc(sizeof(char*));
+    snprintf(logger[command_num][0],sizeof(char*),"%d", pid);
+    logger[command_num][1] = malloc(sizeof(char*));
+    strcpy(logger[command_num][1], line);
+    int i = 0;
+    while(logger[i] != NULL && i < MAX_COMMAND_NUM) {
+        //printf("printing before adding %d %s %s %s\n", i, logger[i][0],logger[i][1], logger[i][2]);
+        i++;
+    }
+    //printf("adding to log line %d\n", command_num);
+    //logger[command_num] = log_line;
 }
 
-pid_t execute_history(char ***history, char *line, int command_num) {
+/*
+ *
+ */
+pid_t execute_jobs(char ***jobs) {
     pid_t pid;
     int stat;
-    if((pid = fork()) == 0) {
+    int real_index = 0;
+
+    if ((pid = fork()) == 0) {
 
         pid_t real_pid = getpid();
         printf("%d\n", real_pid);
-        add_to_history(real_pid, line, history, command_num);
-        for(int i = 0 ; i < MAX_COMMAND_NUM ; i++) {
-            if(history[i] == NULL) {
+
+        for (int i = 0 ; i < MAX_COMMAND_NUM ; i++) {
+            if (jobs[i] == NULL) {
                 break;
             }
-            char **log_line = history[i];
+            char **log_line = jobs[i];
             log_line[1][strlen(log_line[1]) - 1] = 0;
             char *status;
-            if(i == command_num) {
-                status = RUNNING_STATUS;
-            }
-            else {
-                status = get_status(log_line[0]);
-            }
+            status = get_status(log_line[0]);
             printf("%s %s %s\n", log_line[0], log_line[1], status);
-//            printf("%s ", log_line[1]);
-//            if(i == command_num) {
-//                printf("RUNNING\n");
-//            }
-//            else {
-//                printf("%s\n", get_status(log_line[0]));
-//            }
             fflush(stdout);
+            real_index++;
         }
-        history[command_num - 1][2] = DONE_STATUS;
-        exit(0);
+        exit(EXIT_SUCCESS);
     }
     else {
         wait(&stat);
@@ -264,51 +281,123 @@ pid_t execute_history(char ***history, char *line, int command_num) {
 /*
  *
  */
-pid_t command_execute(char **args, char ***history, char *line, int command_num) {
+pid_t execute_history(char ***history, char *line, int command_num) {
+    pid_t pid;
+    int stat;
+    int real_index = 0;
+    pid = fork();
+
+    if (pid == 0) {
+        pid_t real_pid = getpid();
+        printf("%d\n", real_pid);
+        add_to_logger(real_pid, line, history, command_num);
+
+        char **log_line ;
+        for (int i = 0 ; i <= command_num ; i++) {
+            log_line = history[i];
+            log_line[1][strlen(log_line[1]) - 1] = 0;
+            char *status;
+            if (i == command_num) {
+                //printf("%d\n", real_index);
+                status = RUNNING_STATUS;
+            }
+            else {
+                status = get_status(log_line[0]);
+            }
+            printf("%s %s %s\n", log_line[0], log_line[1], status);
+            fflush(stdout);
+        }
+        log_line = history[command_num];
+        log_line[2] = DONE_STATUS;
+        //printf("%s %s %s\n", log_line[0], log_line[1], log_line[2]);
+        exit(EXIT_SUCCESS);
+    }
+    else {
+        wait(&stat);
+        return pid;
+    }
+}
+
+pid_t execute_cd(char **args, int last_arg_position) {
+    if(last_arg_position > 1) {
+        fprintf(stderr, ARGS_NUM_ERROR);
+    }
+    printf("%d\n", getpid());
+    chdir(args[1]);
+    return getpid();
+}
+/*
+ *
+ */
+pid_t command_execute(char **args, char ***history, char ***jobs, char *line, int command_num) {
     int last_arg_position = get_last_parameter_position(args);
+    pid_t child_pid;
     if(args[0] == NULL) {
+        //printf("first argument was null");
         return ERROR_CODE;
     }
-    if(strcmp(args[0], HISTORY_COMMAND) == 0) {
-        return execute_history(history, line, command_num);
+    if(strcmp(args[0], EXIT_COMMAND) == 0) {
+        exit(EXIT_SUCCESS);
     }
-
-    //if command needs to run in the background
+    else if(strcmp(args[0], CD_COMMAND) == 0) {
+        child_pid = execute_cd(args, last_arg_position);
+    }
+    else if(strcmp(args[0], HISTORY_COMMAND) == 0) {
+        child_pid = execute_history(history, line, command_num);
+    }
+    else if(strcmp(args[0], JOBS_COMMAND) == 0) {
+        child_pid = execute_jobs(jobs);
+    }
+    // if command needs to run in the background
     else if(*args[last_arg_position] == BACKGROUND) {
-        return execute_background(args, last_arg_position);
-        //printf("in background");
+        child_pid = execute_background(args, last_arg_position);
+        add_to_logger(child_pid, line, jobs, command_num);
     }
-    //otherwise command needs to run in the foreground
+    // otherwise command needs to run in the foreground
     else {
-        return execute_foreground(args);
-        //printf("in foreground");
+        child_pid =  execute_foreground(args);
     }
+
+    // adding command to history (if command is "history", it will be added as part of it's own run)
+    if(strcmp(args[0], HISTORY_COMMAND) != 0) {
+        add_to_logger(child_pid, line, history, command_num);
+    }
+    return child_pid;
 }
 
 /*
  *
  */
-void init_history(char ***history) {
+void init_logger_buffer(char ***logger) {
     for(int i=0 ; i < MAX_COMMAND_NUM ; i++) {
-        history[i] = NULL;
+        logger[i] = malloc(3 * sizeof(char*));
+        logger[i][0] = malloc(sizeof(char*));
+        logger[i][1] = malloc(sizeof(char*));
+        logger[i][2] = malloc(sizeof(char*));
+        logger[i][0] = NULL;
+        logger[i][1] = NULL;
+        logger[i][2] = NULL;
     }
 }
 
 /*
  *
  */
-void init_buffer(char **args) {
+void init_args_buffer(char **args) {
     for(int i=0 ; i < MAX_BUFFER_SIZE ; i++) {
         args[i] = NULL;
     }
 }
 
+/*
+ *
+ */
 void free_buffer(char *line, char *args[MAX_BUFFER_SIZE]) {
     free(line);
     for(int i=0 ; i < MAX_BUFFER_SIZE ; i++) {
         free(args[i]);
     }
-    free(args);
+    //free(args);
 }
 
 /*
@@ -320,9 +409,12 @@ void command_loop(void) {
     char *line;
     int command_status = 1;
     int command_num = 0;
+    int *job_num = 0;
     int *command_status_ptr = &command_status;
     char ***history =  malloc(MAX_COMMAND_NUM * sizeof(char**));
-    init_history(history);
+    char ***jobs =  malloc(MAX_COMMAND_NUM * sizeof(char**));
+    //init_logger_buffer(history);
+    //init_logger_buffer(jobs);
     int status = 1;
 
     //command loop
@@ -340,7 +432,7 @@ void command_loop(void) {
 
         //initialing argument array
         char **args = malloc(MAX_BUFFER_SIZE * sizeof(char*));
-        init_buffer(args);
+        init_args_buffer(args);
 
         //parsing the commands arguments into the array
         get_command_args(line, command_status_ptr, args);
@@ -352,19 +444,15 @@ void command_loop(void) {
         }
 
         //executing the command
-        pid_t pid = command_execute(args, history, line, command_num);
+        pid_t pid = command_execute(args, history, jobs, line, command_num);
         if (pid == ERROR_CODE) {
             continue;
-        }
-
-        //adding command to history (if command is "history", it will be added as part of it's own run)
-        if(args[0] != HISTORY_COMMAND) {
-            add_to_history(pid, line, history, command_num);
         }
 
         //free resources
         //free_buffer(line, args);
         command_num++;
+        //printf("%d\n", command_num);
     } while(status);
 }
 
