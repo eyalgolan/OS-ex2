@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <pwd.h>
 
 #define MAX_BUFFER_SIZE 100
 #define MAX_COMMAND_NUM 100
@@ -321,9 +322,21 @@ pid_t execute_history(char ***history, char *line, int command_num) {
 pid_t execute_cd(char **args, int last_arg_position) {
     if(last_arg_position > 1) {
         fprintf(stderr, ARGS_NUM_ERROR);
+        fflush(stderr);
+        return getpid();
     }
     printf("%d\n", getpid());
-    chdir(args[1]);
+
+    if(last_arg_position != 0) {
+        if(strcmp(args[1], "~") == 0) {
+            struct passwd *pw = getpwuid(getuid());
+            const char *homedir = pw->pw_dir;
+            args[1] = homedir;
+        }
+    }
+    if(chdir(args[1]) != 0) {
+        perror("Error");
+    }
     return getpid();
 }
 /*
