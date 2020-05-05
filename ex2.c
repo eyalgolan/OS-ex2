@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <pwd.h>
+#include <errno.h>
 
 #define MAX_BUFFER_SIZE 100
 #define MAX_COMMAND_NUM 100
@@ -194,6 +195,7 @@ pid_t execute_foreground(char **args) {
     else {
         // parent process, wait until the child process finish
         wait(&stat);
+        sleep(1/2); // sleeping for half a second to make sure STARTER will appear after the commands output
         return pid;
     }
 }
@@ -226,7 +228,10 @@ char *get_status(const char *pid) {
     int status;
     pid_t received_pid = atoi(pid);
     pid_t return_pid = waitpid(received_pid, &status, WNOHANG); // get the state of the child process
-
+    printf("%d\n", return_pid);
+    printf("%d\n", errno == ECHILD);
+    printf("%d\n", errno == EINTR);
+    printf("%d\n", errno == EINVAL);
     // child is still running
     if (return_pid == 0) {
         return RUNNING_STATUS;
@@ -241,14 +246,14 @@ char *get_status(const char *pid) {
 /*
  * adds the command's pid and args to a new line in the logger
  */
-void add_to_logger(pid_t pid, char *line, char ***logger, int command_num) {
+void add_to_logger(pid_t pid, char *line, char ***logger, int *command_num) {
 
     // allocating memory of the logger line, then copying the command information to it
-    logger[command_num] = malloc(3 * sizeof(char*));
-    logger[command_num][0] = malloc(sizeof(char*));
-    snprintf(logger[command_num][0],sizeof(char*),"%d", pid);
-    logger[command_num][1] = malloc(sizeof(char*));
-    strcpy(logger[command_num][1], line);
+    logger[*command_num] = malloc(3 * sizeof(char*));
+    logger[*command_num][0] = malloc(sizeof(char*));
+    snprintf(logger[*command_num][0],10,"%d", pid);
+    logger[*command_num][1] = malloc(sizeof(char*));
+    strcpy(logger[*command_num][1], line);
 }
 
 /*
@@ -272,10 +277,8 @@ pid_t execute_jobs(char ***jobs) {
                 break;
             }
             char **log_line = jobs[i];
-            log_line[1][strlen(log_line[1]) - 1] = 0;                    // removing trailing newline
-            char *status;
-            status = get_status(log_line[0]);                          // getting the process status
-            printf("%s %s %s\n", log_line[0], log_line[1], status); // printing in the appropriate format
+            log_line[1][strlen(log_line[1]) - 1] = 0;                        // removing trailing newline
+            printf("%s %s %s\n", log_line[0], log_line[1], log_line[2]); // printing in the appropriate format
             fflush(stdout);
             real_index++;
         }
@@ -288,10 +291,11 @@ pid_t execute_jobs(char ***jobs) {
     }
 }
 
+
 /*
- * executes the history command - prints all the commands that were executed by the program
+ * executes the logger command - prints all the commands that were executed by the program
  */
-pid_t execute_history(char ***history, char *line, int command_num) {
+pid_t execute_logger(char ***logger, char *line, int *command_num) {
     pid_t pid;
     int stat;
     pid = fork(); //creating the child process
@@ -301,29 +305,20 @@ pid_t execute_history(char ***history, char *line, int command_num) {
 
         pid_t real_pid = getpid();
         printf("%d\n", real_pid);
-        add_to_logger(real_pid, line, history, command_num);
 
         char **log_line ;
 
-        // going over all the command in the job logger and printing them
-        for (int i = 0 ; i <= command_num ; i++) {
-            log_line = history[i];
+        // going over all the commands in the logger and printing them
+        for (int i = 0 ; i <= *command_num ; i++) {
+            if(logger[i] == NULL)
+            {
+                break;
+            }
+            log_line = logger[i];
             log_line[1][strlen(log_line[1]) - 1] = 0;  // removing trailing newline
-            char *status;
-            // if the command is the last history command, set its status to running status
-            if (i == command_num) {
-                status = RUNNING_STATUS;
-            }
-            // otherwise, get the process's status
-            else {
-                status = get_status(log_line[0]);
-            }
-            printf("%s %s %s\n", log_line[0], log_line[1], status); // printing in the appropriate format
-            fflush(stdout);
+            printf("%s %s %s\n", log_line[0], log_line[1], log_line[2]); // printing in the appropriate format
         }
-        // setting the last history command status to done status
-        log_line = history[command_num];
-        log_line[2] = DONE_STATUS;
+        fflush(stdout);
         exit(EXIT_SUCCESS); // exits with success code
     }
     else {
@@ -362,10 +357,31 @@ pid_t execute_cd(char **args, int last_arg_position) {
     }
     return getpid();
 }
+
+void update_process_status(char ***logger) {
+
+    for(int i = 0 ; i < MAX_COMMAND_NUM ; i++) {
+        int status;
+        if(logger[i] == NULL) {
+            break;
+        }
+        pid_t received_pid = atoi(logger[i][0]);
+        pid_t return_pid = waitpid(received_pid, &status, WNOHANG); // get the state of the child process
+        // child is still running
+        if (return_pid == 0) {
+            logger[i][2] = RUNNING_STATUS;
+        }
+
+        // child exited or error
+        else {
+            logger[i][2] =  DONE_STATUS;
+        }
+    }
+}
 /*
  * executes the received command and adds it to the relevant logs
  */
-pid_t command_execute(char **args, char ***history, char ***jobs, char *line, int command_num) {
+pid_t command_execute(char **args, char ***history, char ***jobs, char *line, int *command_num, int *job_num) {
     int last_arg_position = get_last_parameter_position(args); // get the index of the last argument in the args array
     pid_t child_pid;
 
@@ -386,27 +402,31 @@ pid_t command_execute(char **args, char ***history, char ***jobs, char *line, in
 
     // if the user entered the history command
     else if(strcmp(args[0], HISTORY_COMMAND) == 0) {
-        child_pid = execute_history(history, line, command_num);
+        update_process_status(history);
+        child_pid = execute_logger(history, line, command_num);
+        // printing the history command as the last line in the history log
+        printf("%d %s %s\n", child_pid, HISTORY_COMMAND, RUNNING_STATUS); // printing in the appropriate format
     }
 
     // ih the user entered the jobs command
     else if(strcmp(args[0], JOBS_COMMAND) == 0) {
-        child_pid = execute_jobs(jobs);
+        update_process_status(jobs);
+        child_pid = execute_logger(jobs, line, command_num);
     }
     // if command needs to run in the background, run it and add it to the jobs logger
     else if(*args[last_arg_position] == BACKGROUND) {
         child_pid = execute_background(args, last_arg_position);
-        add_to_logger(child_pid, line, jobs, command_num);
+        add_to_logger(child_pid, line, jobs, job_num);
+        (*job_num)++;
+        //printf("job num %d\n", *job_num);
     }
     // otherwise command needs to run in the foreground
     else {
-        child_pid =  execute_foreground(args);
+        child_pid = execute_foreground(args);
     }
 
-    // adding command to history (if command is "history", it will be added as part of it's own run)
-    if(strcmp(args[0], HISTORY_COMMAND) != 0) {
-        add_to_logger(child_pid, line, history, command_num);
-    }
+    // adding command to history
+    add_to_logger(child_pid, line, history, command_num);
     return child_pid;
 }
 
@@ -455,7 +475,7 @@ void command_loop(void) {
     char *line;
     int command_status = 1;
     int command_num = 0;
-    int *job_num = 0;
+    int job_num = 0;
     int *command_status_ptr = &command_status;
     char ***history =  malloc(MAX_COMMAND_NUM * sizeof(char**));
     char ***jobs =  malloc(MAX_COMMAND_NUM * sizeof(char**));
@@ -490,7 +510,7 @@ void command_loop(void) {
         }
 
         //executing the command
-        pid = command_execute(args, history, jobs, line, command_num);
+        pid = command_execute(args, history, jobs, line, &command_num, &job_num);
         if (pid == ERROR_CODE) {
             continue;
         }
