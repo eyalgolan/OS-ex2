@@ -6,7 +6,6 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <pwd.h>
-#include <errno.h>
 
 #define MAX_BUFFER_SIZE 100
 #define MAX_COMMAND_NUM 100
@@ -43,14 +42,15 @@ char *get_line(int *command_status_ptr) {
 /*
  * Parsing the received line into a list of arguments and updates the args array
  */
-void get_command_args(char *command, int *command_status_ptr, char *args[MAX_BUFFER_SIZE]) {
+void get_command_args(char *command, char *args[MAX_BUFFER_SIZE]) {
 
-    int position = 0;   // position in argument array
-    char *arg;          // pointer to current arg
-    char *begin;        // args starting position in the command
+    int position = 0;       // position in argument array
+    char *arg;              // pointer to current arg
+    char *begin;            // args starting position in the command
+    int arg_chars_amount;   // size of the next arg
 
     // going over the command
-    for(;;) {
+    while(*command != '\0') {
         // skipping spaces
         while (isspace(*command)) {
             *command++;
@@ -67,7 +67,7 @@ void get_command_args(char *command, int *command_status_ptr, char *args[MAX_BUF
             // allocating the arg in the args array
             arg = malloc(sizeof(char) + 1);
             strncpy(arg, command, 1);
-            arg[strlen(arg)] = '\0';
+            arg[1] = '\0';
             args[position] = arg;
             position++;
             *command++;
@@ -75,17 +75,18 @@ void get_command_args(char *command, int *command_status_ptr, char *args[MAX_BUF
         }
 
         // reading a command argument
-        if(isalnum(*command) || *command == '-' || *command == '~' || *command == '.') {
+        if(*command != ' ' && *command != '"' && *command != '\0' && *command !='\n') {
             begin = command;
-            //todo change to everthing that is not space or /0
-            while(isalnum(*command) || *command == '-' || *command == '~' || *command == '.') {
+
+            while(*command != ' ' && *command != '"' && *command != '\0' && *command !='\n') {
                 *command++;
             }
 
             // allocating the arg in the args array
-            arg = malloc((command-begin + 1) * sizeof(char));
-            strncpy(arg, begin, command - begin);
-            arg[strlen(arg)] = '\0';
+            arg_chars_amount = command - begin;
+            arg = malloc((arg_chars_amount + 1) * sizeof(char));
+            strncpy(arg, begin, arg_chars_amount);
+            arg[arg_chars_amount] = '\0';
             args[position] = arg;
             position++;
             arg = NULL;
@@ -93,28 +94,25 @@ void get_command_args(char *command, int *command_status_ptr, char *args[MAX_BUF
 
         // if we have quotes in the command
         if(*command =='"') {
-            int quote = *command++;
+            *command++;
             begin = command;
-
             // going over the command until we reached the closing quote
             while (*command && *command != '"') {
                 *command++;
                 // if we reached the end of the command, without getting a closing quote, update status to error
                 if (*command == '\0') {
-                    *command_status_ptr = 0;
+                    break;
                 }
             }
-            *command++;
-
-            // checking if there is an error, if so finish reading the command
-            if (*command_status_ptr == 0) {
-                break;
+            if (*command != '\0') {
+                *command++;
             }
 
             // allocating the arg in the args array
-            arg = malloc((command-begin + 1) * sizeof(char));
-            strncpy(arg, begin, command - begin);
-            arg[strlen(arg)] = '\0';
+            arg_chars_amount = command - begin;
+            arg = malloc((arg_chars_amount + 1) * sizeof(char));
+            strncpy(arg, begin, arg_chars_amount);
+            arg[arg_chars_amount] = '\0';
             args[position] = arg;
             position++;
             arg = NULL;
@@ -178,12 +176,11 @@ pid_t execute_foreground(char **args) {
         pid_t real_pid = getpid();
         printf("%d\n", real_pid);
         fflush(stdout);
-
-        ret_code = execvp(args[0],args); //executing the command
+        ret_code = execvp(args[0],args); // executing the command
 
         // if the command returned an error code
         if(ret_code == -1) {
-            // print an error message and return an failiure code
+            // print an error message and return an failure code
             fprintf(stderr, ERROR_MSG);
             fflush(stderr);
             exit(EXIT_FAILURE);
@@ -222,31 +219,9 @@ int get_last_parameter_position(char *args[MAX_BUFFER_SIZE]) {
 }
 
 /*
- * gets the status of a command and returns it
- */
-char *get_status(const char *pid) {
-    int status;
-    pid_t received_pid = atoi(pid);
-    pid_t return_pid = waitpid(received_pid, &status, WNOHANG); // get the state of the child process
-    printf("%d\n", return_pid);
-    printf("%d\n", errno == ECHILD);
-    printf("%d\n", errno == EINTR);
-    printf("%d\n", errno == EINVAL);
-    // child is still running
-    if (return_pid == 0) {
-        return RUNNING_STATUS;
-    }
-
-    // child exited or error
-    else {
-        return DONE_STATUS;
-    }
-}
-
-/*
  * adds the command's pid and args to a new line in the logger
  */
-void add_to_logger(pid_t pid, char *line, char ***logger, int *command_num) {
+void add_to_logger(pid_t pid, char *line, char ***logger, const int *command_num) {
 
     // allocating memory of the logger line, then copying the command information to it
     logger[*command_num] = malloc(3 * sizeof(char*));
@@ -255,42 +230,6 @@ void add_to_logger(pid_t pid, char *line, char ***logger, int *command_num) {
     logger[*command_num][1] = malloc(sizeof(char*));
     strcpy(logger[*command_num][1], line);
 }
-
-/*
- * executes the job command - prints the all the jobs that were started by the program
- */
-pid_t execute_jobs(char ***jobs) {
-    pid_t pid;
-    int stat;
-    int real_index = 0;
-
-    if ((pid = fork()) == 0) {
-        //child process
-
-        // printing the process's pid
-        pid_t real_pid = getpid();
-        printf("%d\n", real_pid);
-
-        // going over all the command in the job logger and printing them
-        for (int i = 0 ; i < MAX_COMMAND_NUM ; i++) {
-            if (jobs[i] == NULL) {
-                break;
-            }
-            char **log_line = jobs[i];
-            log_line[1][strlen(log_line[1]) - 1] = 0;                        // removing trailing newline
-            printf("%s %s %s\n", log_line[0], log_line[1], log_line[2]); // printing in the appropriate format
-            fflush(stdout);
-            real_index++;
-        }
-        exit(EXIT_SUCCESS); // exits with success code
-    }
-    else {
-        // parent process, waiting for the child to finish
-        wait(&stat);
-        return pid;
-    }
-}
-
 
 /*
  * executes the logger command - prints all the commands that were executed by the program
@@ -358,10 +297,14 @@ pid_t execute_cd(char **args, int last_arg_position) {
     return getpid();
 }
 
+/*
+ * updates the status of all commands in the logger
+ */
 void update_process_status(char ***logger) {
 
     for(int i = 0 ; i < MAX_COMMAND_NUM ; i++) {
         int status;
+        // if we reached the last command in the logger
         if(logger[i] == NULL) {
             break;
         }
@@ -408,7 +351,7 @@ pid_t command_execute(char **args, char ***history, char ***jobs, char *line, in
         printf("%d %s %s\n", child_pid, HISTORY_COMMAND, RUNNING_STATUS); // printing in the appropriate format
     }
 
-    // ih the user entered the jobs command
+    // if the user entered the jobs command
     else if(strcmp(args[0], JOBS_COMMAND) == 0) {
         update_process_status(jobs);
         child_pid = execute_logger(jobs, line, command_num);
@@ -418,7 +361,6 @@ pid_t command_execute(char **args, char ***history, char ***jobs, char *line, in
         child_pid = execute_background(args, last_arg_position);
         add_to_logger(child_pid, line, jobs, job_num);
         (*job_num)++;
-        //printf("job num %d\n", *job_num);
     }
     // otherwise command needs to run in the foreground
     else {
@@ -431,21 +373,6 @@ pid_t command_execute(char **args, char ***history, char ***jobs, char *line, in
 }
 
 /*
- *
- */
-void init_logger_buffer(char ***logger) {
-    for(int i=0 ; i < MAX_COMMAND_NUM ; i++) {
-        logger[i] = malloc(3 * sizeof(char*));
-        logger[i][0] = malloc(sizeof(char*));
-        logger[i][1] = malloc(sizeof(char*));
-        logger[i][2] = malloc(sizeof(char*));
-        logger[i][0] = NULL;
-        logger[i][1] = NULL;
-        logger[i][2] = NULL;
-    }
-}
-
-/*
  * setting all the arg pointers to null
  */
 void init_args_buffer(char **args) {
@@ -455,14 +382,14 @@ void init_args_buffer(char **args) {
 }
 
 /*
- *
+ * free the memory used for the last command
  */
 void free_buffer(char *line, char *args[MAX_BUFFER_SIZE]) {
     free(line);
     for(int i=0 ; i < MAX_BUFFER_SIZE ; i++) {
         free(args[i]);
     }
-    //free(args);
+    free(args);
 }
 
 /*
@@ -471,41 +398,40 @@ void free_buffer(char *line, char *args[MAX_BUFFER_SIZE]) {
  */
 void command_loop(void) {
 
-    //initializing variables
-    char *line;
+    // initializing variables
     int command_status = 1;
-    int command_num = 0;
-    int job_num = 0;
+    int command_num = 0; // number of total commands so far
+    int job_num = 0; // number of total jobs so far
     int *command_status_ptr = &command_status;
-    char ***history =  malloc(MAX_COMMAND_NUM * sizeof(char**));
-    char ***jobs =  malloc(MAX_COMMAND_NUM * sizeof(char**));
-    //init_logger_buffer(history);
-    //init_logger_buffer(jobs);
+    char ***history =  malloc(MAX_COMMAND_NUM * sizeof(char**)); // history log
+    char ***jobs =  malloc(MAX_COMMAND_NUM * sizeof(char**)); // job log
     pid_t pid = 0;
 
-    //command loop
+    // command loop
     do {
         printf(STARTER);
 
-        //reading the command
+        // reading the command
+        char *line; // current line input
         line = get_line(command_status_ptr);
 
-        //checking if error occurred
+        // checking if error occurred
         if (*command_status_ptr == 0) {
             fprintf(stderr, ERROR_MSG);
             continue;
         }
 
-        //initialing argument array
+        // initialing argument array
         char **args = malloc(MAX_BUFFER_SIZE * sizeof(char*));
         init_args_buffer(args);
 
-        //parsing the commands arguments into the array
-        get_command_args(line, command_status_ptr, args);
+        // parsing the commands arguments into the array
+        get_command_args(line, args);
 
         //checking if error occurred
         if (*command_status_ptr == 0) {
             fprintf(stderr, ERROR_MSG);
+            *command_status_ptr = 1;
             continue;
         }
 
@@ -516,9 +442,8 @@ void command_loop(void) {
         }
 
         //free resources
-        //free_buffer(line, args);
+        free_buffer(line, args);
         command_num++;
-        //printf("%d\n", command_num);
     } while(pid != EXIT_CODE);
 
     free(history);
