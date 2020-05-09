@@ -286,10 +286,19 @@ pid_t execute_cd(char **args, int last_arg_position) {
             // change the argument to the user's home directory
             struct passwd *pw = getpwuid(getuid());
             const char *homedir = pw->pw_dir;
-            args[1] = homedir;
+            // if the command didn't execute successfully, return an error and finish the entire program's run
+            if(chdir(homedir) != 0) {
+                perror("Error");
+                return EXIT_CODE;
+            }
+            return getpid();
         }
     }
-    // if the command didn't execute successfully, return an error and finish the entire program's run
+    // if the command was received without parameters
+    if(last_arg_position == 0) {
+        return getpid();
+    }
+    // other cases. if the command didn't execute successfully, return an error and finish the entire program's run
     if(chdir(args[1]) != 0) {
         perror("Error");
         return EXIT_CODE;
