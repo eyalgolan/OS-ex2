@@ -282,15 +282,20 @@ pid_t execute_cd(char **args, int last_arg_position) {
     // if the command received parameters
     if(last_arg_position != 0) {
         // and the parameter is ~
-        if(strcmp(args[1], "~") == 0) {
+        if((args[1][0] == '~' && strlen(args[1]) == 1) || (args[1][0] == '~' && args[1][1] == '/')){
             // change the argument to the user's home directory
             struct passwd *pw = getpwuid(getuid());
             const char *homedir = pw->pw_dir;
+            char *complete_path = malloc(strlen(args[1]) + strlen(homedir));
+            args[1]++;
+            strcpy(complete_path, homedir);
+            strcat(complete_path, args[1]);
             // if the command didn't execute successfully, return an error and finish the entire program's run
-            if(chdir(homedir) != 0) {
+            if(chdir(complete_path) != 0) {
                 perror("Error");
                 return EXIT_CODE;
             }
+            free(complete_path);
             return getpid();
         }
     }
@@ -451,7 +456,7 @@ void command_loop(void) {
         }
 
         //free resources
-        free_buffer(line, args);
+        //free_buffer(line, args);
         command_num++;
     } while(pid != EXIT_CODE);
 
