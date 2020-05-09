@@ -104,9 +104,9 @@ void get_command_args(char *command, char *args[MAX_BUFFER_SIZE]) {
                     break;
                 }
             }
-            if (*command != '\0') {
-                *command++;
-            }
+//            if (*command != '\0') {
+//                *command++;
+//            }
 
             // allocating the arg in the args array
             arg_chars_amount = command - begin;
@@ -115,6 +115,7 @@ void get_command_args(char *command, char *args[MAX_BUFFER_SIZE]) {
             arg[arg_chars_amount] = '\0';
             args[position] = arg;
             position++;
+            *command++;
             arg = NULL;
         }
     }
@@ -460,6 +461,7 @@ void command_loop(void) {
         command_num++;
     } while(pid != EXIT_CODE);
 
+    // free loggers
     free(history);
     free(jobs);
     exit(EXIT_SUCCESS);
@@ -469,7 +471,7 @@ void command_loop(void) {
  * The main calls the command_loop function which controls most of the programs logic
  */
 int main() {
-    //running the command loop
+    // running the command loop
     command_loop();
 
     return 0;
