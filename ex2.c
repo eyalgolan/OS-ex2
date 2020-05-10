@@ -228,7 +228,7 @@ void add_to_logger(pid_t pid, char *line, char ***logger, const int *command_num
     logger[*command_num] = malloc(3 * sizeof(char*));
     logger[*command_num][0] = malloc(sizeof(char*));
     snprintf(logger[*command_num][0],10,"%d", pid);
-    logger[*command_num][1] = malloc(sizeof(char*));
+    logger[*command_num][1] = malloc(strlen(line));
     strcpy(logger[*command_num][1], line);
 }
 
@@ -255,7 +255,7 @@ pid_t execute_logger(char ***logger, char *line, int *command_num) {
                 break;
             }
             log_line = logger[i];
-            log_line[1][strlen(log_line[1]) - 1] = 0;  // removing trailing newline
+            log_line[1][strlen(log_line[1]) - 1] = '\0';  // removing trailing newline
             printf("%s %s %s\n", log_line[0], log_line[1], log_line[2]); // printing in the appropriate format
         }
         fflush(stdout);
