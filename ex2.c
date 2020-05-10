@@ -205,7 +205,8 @@ int get_last_parameter_position(char *args[MAX_BUFFER_SIZE]) {
     int last_arg_position = -1;
 
     // going over the args array until we get null or until we reached the max buffer size
-    for(int i=0 ; i < MAX_BUFFER_SIZE - 1; i++) {
+    int i;
+    for(i=0 ; i < MAX_BUFFER_SIZE - 1; i++) {
         if(args[i + 1] == NULL){
             last_arg_position = i;
             break;
@@ -249,7 +250,8 @@ pid_t execute_logger(char ***logger, char *line, int *command_num) {
         char **log_line ;
 
         // going over all the commands in the logger and printing them
-        for (int i = 0 ; i <= *command_num ; i++) {
+        int i;
+        for (i = 0 ; i <= *command_num ; i++) {
             if(logger[i] == NULL)
             {
                 break;
@@ -317,7 +319,8 @@ pid_t execute_cd(char **args, int last_arg_position) {
  */
 void update_process_status(char ***logger) {
 
-    for(int i = 0 ; i < MAX_COMMAND_NUM ; i++) {
+    int i;
+    for(i = 0 ; i < MAX_COMMAND_NUM ; i++) {
         int status;
         // if we reached the last command in the logger
         if(logger[i] == NULL) {
@@ -391,7 +394,8 @@ pid_t command_execute(char **args, char ***history, char ***jobs, char *line, in
  * setting all the arg pointers to null
  */
 void init_args_buffer(char **args) {
-    for(int i=0 ; i < MAX_BUFFER_SIZE ; i++) {
+    int i;
+    for(i=0 ; i < MAX_BUFFER_SIZE ; i++) {
         args[i] = NULL;
     }
 }
@@ -401,7 +405,8 @@ void init_args_buffer(char **args) {
  */
 void free_buffer(char *line, char *args[MAX_BUFFER_SIZE]) {
     free(line);
-    for(int i=0 ; i < MAX_BUFFER_SIZE ; i++) {
+    int i;
+    for(i=0 ; i < MAX_BUFFER_SIZE ; i++) {
         free(args[i]);
     }
     free(args);
