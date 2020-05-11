@@ -188,6 +188,7 @@ pid_t execute_foreground(char **args) {
         }
 
         // otherwise exit with success code
+        fflush(stdout);
         exit(EXIT_SUCCESS);
     }
     else {
